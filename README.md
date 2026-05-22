@@ -18,12 +18,10 @@
 
 ## 📸 界面预览
 
-> **💡 提示：** 建议你在这里上传两张截图（一张主面板，一张日历弹窗），展示它的美观度。
-> 
-> *在这里插入主界面截图*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/ca56727c-0fb7-4bab-87b5-2bb060281fef" />
+> *主界面*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/ca56727c-0fb7-4bab-87b5-2bb060281fef" />
 
-> *在这里插入日历界面截图*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/13b41d42-0a68-46f1-ad5c-0308f6bfaf27" />
-<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/1846b4e5-c758-497b-b418-2dff7cfca449" />
+> *签到日历*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/13b41d42-0a68-46f1-ad5c-0308f6bfaf27" />
+> *通知设置*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/1846b4e5-c758-497b-b418-2dff7cfca449" />
 
 
 ---
