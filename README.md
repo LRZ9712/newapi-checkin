@@ -8,7 +8,6 @@
 
 ## ✨ 核心特性
 
-- 🎨 **极简高颜值 UI**：基于 Tailwind CSS 构建的温暖博客风卡片式界面，支持深度个性化定制（头像、昵称、签名均可自定义）。
 - ⏰ **独立定时任务**：抛弃一刀切，为每个站点单独设置每天的触发签到时间。
 - 📅 **可视化打卡日历**：以直观的网格日历形式展示每个站点的月度签到记录，成功与失败一目了然。
 - 🔔 **多渠道失败提醒**：支持 iOS Bark 极简推送与 SMTP 邮件推送，仅在签到失败时打扰你。
@@ -21,6 +20,7 @@
 > *主界面*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/ca56727c-0fb7-4bab-87b5-2bb060281fef" />
 
 > *签到日历*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/13b41d42-0a68-46f1-ad5c-0308f6bfaf27" />
+
 > *通知设置*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/1846b4e5-c758-497b-b418-2dff7cfca449" />
 
 
@@ -41,7 +41,7 @@ cd newapi-checkin
 ```
 
 ### 3. 配置账号与密码（可选但建议）
-项目默认的管理员账号为 `admin`，密码为 `123456`。
+项目默认的管理员账号为 `admin`，密码为 `admin123`。
 为了安全，建议在部署前修改 `docker-compose.yml` 中的环境变量：
 ```bash
 nano docker-compose.yml
