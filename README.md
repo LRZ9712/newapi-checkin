@@ -1,4 +1,4 @@
-# 🥔 Potato Check-in | 高颜值 New-API 自动签到面板
+# 🥔 New-API 自动签到面板
 
 ![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)
 ![Docker](https://img.shields.io/badge/Docker-Supported-2496ED.svg)
