@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ s.site_title }} - 自动签到系统</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #EBE2CA; color: #5c544e; }
+        .ryu-card { background-color: #FDFBF5; border-radius: 1.5rem; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); }
+        .ryu-input { background-color: #f5efe3; border: none; border-radius: 0.75rem; padding: 0.75rem; width: 100%; outline: none; }
+        .ryu-input:focus { box-shadow: 0 0 0 2px #E69B91; }
+        .ryu-btn { background-color: #E69B91; color: white; border-radius: 0.75rem; padding: 0.5rem 1.5rem; transition: all 0.2s; }
+        .ryu-btn:hover { background-color: #d68c83; }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; text-align: center; }
+        .cal-day { padding: 8px; border-radius: 8px; background-color: #f5efe3; font-size: 0.875rem; }
+        .cal-success { background-color: #a8d5ba; color: #1a4f2e; font-weight: bold; }
+        .cal-fail { background-color: #fca5a5; color: #7f1d1d; font-weight: bold; }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: #E69B91; }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
+</head>
+<body class="p-6 md:p-12 selection:bg-[#E69B91] selection:text-white">
+    
+    <div class="flex justify-between items-center mb-10 max-w-6xl mx-auto px-4">
+        <h1 class="text-3xl font-extrabold text-[#E69B91] tracking-wider">{{ s.site_title }}</h1>
+        <div class="space-x-6 flex items-center">
+            <button onclick="openSettingsModal()" class="text-sm hover:text-[#E69B91] font-bold transition flex items-center gap-1">
+                ⚙️ 系统与通知配置
+            </button>
+            <a href="/logout" class="text-sm hover:text-[#E69B91] transition border-l pl-6 border-gray-300">安全退出</a>
+        </div>
+    </div>
+
+    <div class="max-w-6xl mx-auto flex flex-col md:flex-row gap-8">
+        <!-- 左侧名片区 -->
+        <div class="w-full md:w-72 flex-shrink-0">
+            <div class="ryu-card p-6 flex flex-col items-center text-center">
+                <div class="w-32 h-32 rounded-full overflow-hidden bg-[#e0d6c1] border-4 border-white shadow-sm mb-4 relative">
+                    <img src="{{ s.profile_avatar }}" alt="Avatar" class="w-full h-full object-cover">
+                </div>
+                <h2 class="text-xl font-bold text-gray-800 mb-2">{{ s.profile_name }}</h2>
+                <p class="text-sm text-[#E69B91] font-medium mb-6">{{ s.profile_signature }}</p>
+                <div class="w-full border-t border-gray-100 pt-4 text-sm text-gray-500">
+                    自动签到守护中...
+                </div>
+            </div>
+        </div>
+
+        <div class="flex-1 space-y-6">
+            <div class="ryu-card p-6">
+                <h3 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <span class="text-[#E69B91]">✧</span> 新增签到站点
+                </h3>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <input id="name" type="text" placeholder="站点名称 (如: 公益站A)" class="ryu-input">
+                    <input id="url" type="text" placeholder="签到 URL (https://.../checkin)" class="ryu-input">
+                    <input id="user_id" type="text" placeholder="New-API User ID (如: 60)" class="ryu-input">
+                    <input id="session" type="text" placeholder="Session Cookie" class="ryu-input">
+                    <div class="col-span-1 md:col-span-2 flex items-center gap-4 bg-[#f5efe3] p-3 rounded-xl">
+                        <label class="font-medium text-sm">每天执行时间：</label>
+                        <input id="cron_time" type="time" value="08:00" class="ryu-input !w-auto !py-1">
+                    </div>
+                </div>
+                <button onclick="addSite()" class="ryu-btn font-bold">保存并添加</button>
+            </div>
+
+            <div id="site-list" class="space-y-4"></div>
+        </div>
+    </div>
+
+    <!-- 系统配置 Modal -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="ryu-card w-full max-w-lg flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-6 border-b shrink-0">
+                <h3 class="font-bold text-xl text-gray-800">系统与通知配置</h3>
+                <button onclick="closeSettingsModal()" class="text-gray-400 hover:text-red-500 text-2xl font-bold">&times;</button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto space-y-6 flex-1">
+                <!-- 个性化配置 -->
+                <div class="bg-[#f5efe3] p-4 rounded-xl">
+                    <h4 class="font-bold text-[#E69B91] mb-3">✨ 个性化外观</h4>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <input id="site_title" type="text" placeholder="网站名称 (如: potato)" class="ryu-input bg-white col-span-2">
+                        <input id="profile_name" type="text" placeholder="展示昵称" class="ryu-input bg-white">
+                        <input id="profile_signature" type="text" placeholder="个性签名" class="ryu-input bg-white">
+                        <input id="profile_avatar" type="text" placeholder="头像 URL (http开头的图片链接)" class="ryu-input bg-white col-span-2">
+                    </div>
+                </div>
+
+                <!-- Bark 配置 -->
+                <div class="bg-[#f5efe3] p-4 rounded-xl">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-bold text-[#E69B91]">iOS Bark 推送</h4>
+                        <label class="switch"><input type="checkbox" id="bark_enabled"><span class="slider"></span></label>
+                    </div>
+                    <input id="bark_url" type="text" placeholder="推送链接 (如: https://api.day.app/your_key)" class="ryu-input bg-white text-sm">
+                </div>
+
+                <!-- Email 配置 -->
+                <div class="bg-[#f5efe3] p-4 rounded-xl">
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="font-bold text-[#E69B91]">SMTP 邮件推送</h4>
+                        <label class="switch"><input type="checkbox" id="email_enabled"><span class="slider"></span></label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-3 text-sm">
+                        <input id="email_smtp" type="text" placeholder="SMTP 服务器" class="ryu-input bg-white col-span-2">
+                        <input id="email_port" type="number" placeholder="端口 (默认 465)" class="ryu-input bg-white">
+                        <input id="email_receiver" type="email" placeholder="接收邮箱" class="ryu-input bg-white">
+                        <input id="email_user" type="email" placeholder="发件邮箱账号" class="ryu-input bg-white col-span-2">
+                        <input id="email_pass" type="password" placeholder="邮箱授权码" class="ryu-input bg-white col-span-2">
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-6 border-t flex gap-3 shrink-0 bg-white rounded-b-[1.5rem]">
+                <button onclick="saveSettings()" class="ryu-btn font-bold flex-1">保存并刷新页面</button>
+                <button onclick="testNotify()" class="bg-gray-200 hover:bg-gray-300 text-gray-700 font-bold py-2 px-4 rounded-xl transition flex-1">测试发送通知</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日历弹窗 Modal -->
+    <div id="cal-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+        <div class="ryu-card p-6 w-[400px] max-w-full m-4">
+            <div class="flex justify-between items-center mb-4">
+                <h3 id="cal-title" class="font-bold text-lg">签到日历</h3>
+                <button onclick="closeCal()" class="text-gray-400 hover:text-red-500 text-xl font-bold">&times;</button>
+            </div>
+            <div class="text-center mb-4 font-bold text-[#E69B91]" id="cal-month"></div>
+            <div class="calendar-grid text-gray-500 font-medium mb-2">
+                <div>日</div><div>一</div><div>二</div><div>三</div><div>四</div><div>五</div><div>六</div>
+            </div>
+            <div id="cal-days" class="calendar-grid"></div>
+        </div>
+    </div>
+
+    <script>
+        async function loadSites() {
+            const res = await fetch('/api/sites');
+            const sites = await res.json();
+            document.getElementById('site-list').innerHTML = sites.map(s => `
+                <div class="ryu-card p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 hover:shadow-md transition group">
+                    <div class="w-full">
+                        <div class="flex justify-between items-center w-full">
+                            <h4 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                                ${s.name} <span class="text-xs bg-[#f5efe3] text-[#E69B91] px-2 py-1 rounded-full">ID: ${s.user_id}</span>
+                            </h4>
+                            <button onclick="deleteSite(${s.id})" class="text-red-400 hover:text-red-600 text-sm font-bold opacity-0 group-hover:opacity-100 transition">删除站点</button>
+                        </div>
+                        <div class="text-sm mt-2 text-gray-500 flex items-center gap-4">
+                            <span>⏱ 每天 ${s.cron_time} 触发</span>
+                            <span>📡 状态: <b class="${s.last_status.includes('成功') ? 'text-[#a8d5ba]' : 'text-[#fca5a5]'}">${s.last_status}</b></span>
+                        </div>
+                    </div>
+                    <div class="flex gap-2 w-full md:w-auto mt-2 md:mt-0">
+                        <button onclick="showCalendar(${s.id}, '${s.name}')" class="flex-1 md:flex-none bg-[#f5efe3] hover:bg-[#eadeca] text-[#5c544e] font-bold py-2 px-4 rounded-xl transition text-sm whitespace-nowrap">📅 日历</button>
+                        <button onclick="triggerSite(${s.id})" class="flex-1 md:flex-none ryu-btn text-sm whitespace-nowrap">手动补签</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        async function addSite() {
+            const data = {
+                name: document.getElementById('name').value,
+                url: document.getElementById('url').value,
+                user_id: document.getElementById('user_id').value,
+                session_cookie: document.getElementById('session').value,
+                cron_time: document.getElementById('cron_time').value
+            };
+            if(!data.name || !data.url || !data.user_id) return alert('信息填写不全哦！');
+            await fetch('/api/add', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            ['name','url','user_id','session'].forEach(id => document.getElementById(id).value='');
+            loadSites();
+        }
+
+        async function triggerSite(id) {
+            await fetch(`/api/trigger/${id}`, { method: 'POST' });
+            setTimeout(loadSites, 500); 
+        }
+
+        async function deleteSite(id) {
+            if(confirm('确定要删除这个签到站点及它的所有记录吗？')) {
+                await fetch(`/api/delete/${id}`, { method: 'DELETE' });
+                loadSites();
+            }
+        }
+
+        // --- 全局配置逻辑 ---
+        async function openSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+            const res = await fetch('/api/settings');
+            const s = await res.json();
+            
+            document.getElementById('site_title').value = s.site_title || '';
+            document.getElementById('profile_name').value = s.profile_name || '';
+            document.getElementById('profile_signature').value = s.profile_signature || '';
+            document.getElementById('profile_avatar').value = s.profile_avatar || '';
+            
+            document.getElementById('bark_enabled').checked = s.bark_enabled === 'true';
+            document.getElementById('bark_url').value = s.bark_url || '';
+            document.getElementById('email_enabled').checked = s.email_enabled === 'true';
+            document.getElementById('email_smtp').value = s.email_smtp || '';
+            document.getElementById('email_port').value = s.email_port || '465';
+            document.getElementById('email_receiver').value = s.email_receiver || '';
+            document.getElementById('email_user').value = s.email_user || '';
+            document.getElementById('email_pass').value = s.email_pass || '';
+        }
+
+        function closeSettingsModal() { document.getElementById('settings-modal').classList.add('hidden'); }
+
+        async function saveSettings() {
+            const data = {
+                site_title: document.getElementById('site_title').value,
+                profile_name: document.getElementById('profile_name').value,
+                profile_signature: document.getElementById('profile_signature').value,
+                profile_avatar: document.getElementById('profile_avatar').value,
+                bark_enabled: document.getElementById('bark_enabled').checked.toString(),
+                bark_url: document.getElementById('bark_url').value,
+                email_enabled: document.getElementById('email_enabled').checked.toString(),
+                email_smtp: document.getElementById('email_smtp').value,
+                email_port: document.getElementById('email_port').value,
+                email_receiver: document.getElementById('email_receiver').value,
+                email_user: document.getElementById('email_user').value,
+                email_pass: document.getElementById('email_pass').value
+            };
+            await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
+            alert('配置已保存生效！');
+            location.reload(); // 刷新页面应用最新标题和头像
+        }
+
+        async function testNotify() {
+            await saveSettings();
+            const res = await fetch('/api/test_notify', { method: 'POST' });
+            const data = await res.json();
+            alert(data.message);
+        }
+
+        // --- 日历逻辑 ---
+        async function showCalendar(siteId, siteName) {
+            document.getElementById('cal-modal').classList.remove('hidden');
+            document.getElementById('cal-title').innerText = siteName + ' 的打卡记录';
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            document.getElementById('cal-month').innerText = `${year}年 ${month}月`;
+
+            const res = await fetch(`/api/logs/${siteId}/${year}-${month}`);
+            const logs = await res.json();
+            const logMap = {};
+            logs.forEach(l => { logMap[parseInt(l.date.split('-')[2])] = l.status; });
+
+            const firstDay = new Date(year, now.getMonth(), 1).getDay();
+            const daysInMonth = new Date(year, now.getMonth() + 1, 0).getDate();
+            
+            let calHtml = '';
+            for(let i=0; i<firstDay; i++) calHtml += `<div class="cal-day opacity-0"></div>`;
+            for(let i=1; i<=daysInMonth; i++) {
+                let statusClass = '';
+                if(logMap[i]) statusClass = logMap[i].includes('成功') ? 'cal-success' : 'cal-fail';
+                calHtml += `<div class="cal-day ${statusClass}">${i}</div>`;
+            }
+            document.getElementById('cal-days').innerHTML = calHtml;
+        }
+
+        function closeCal() { document.getElementById('cal-modal').classList.add('hidden'); }
+
+        loadSites();
+    </script>
+</body>
+</html>

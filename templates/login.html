@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>登录 - {{ s.site_title }} Check-in</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #EBE2CA; }
+        .card { background-color: #FDFBF5; border-radius: 1.5rem; }
+    </style>
+</head>
+<body class="min-h-screen flex items-center justify-center font-sans text-[#5c544e]">
+    <div class="card p-8 shadow-sm w-96 text-center">
+        <h1 class="text-3xl font-bold mb-6 text-[#E69B91]">{{ s.site_title }}</h1>
+        <div class="space-y-4">
+            <input id="user" type="text" placeholder="管理账号" class="w-full px-4 py-3 bg-[#f5efe3] rounded-xl outline-none focus:ring-2 focus:ring-[#E69B91]/50">
+            <input id="pwd" type="password" placeholder="密码" class="w-full px-4 py-3 bg-[#f5efe3] rounded-xl outline-none focus:ring-2 focus:ring-[#E69B91]/50">
+            <button onclick="doLogin()" class="w-full mt-4 bg-[#E69B91] hover:bg-[#d68c83] text-white font-bold py-3 rounded-xl transition shadow-sm">进入系统</button>
+        </div>
+    </div>
+    <script>
+        async function doLogin() {
+            const res = await fetch('/login', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({username: user.value, password: pwd.value})
+            });
+            const data = await res.json();
+            if(data.success) location.href = '/';
+            else alert(data.message);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  web:
+    build: .
+    container_name: newapi-checkin
+    restart: always
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - TZ=Asia/Shanghai
+      - ADMIN_USER=admin              # <--- 在这里修改你的登录账号
+      - ADMIN_PASS=admin123             # <--- 在这里修改你的登录密码
+      - SECRET_KEY=admin2026 # 用于 session 加密
