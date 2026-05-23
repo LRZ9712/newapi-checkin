@@ -29,11 +29,15 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
     
-    # 数据库热更新：自动增加排序字段，防止旧数据库报错
+    # 数据库热更新：自动增加排序字段和余额字段
     try:
         c.execute("ALTER TABLE sites ADD COLUMN sort_order INTEGER DEFAULT 0")
     except sqlite3.OperationalError:
-        pass # 列已存在则忽略
+        pass
+    try:
+        c.execute("ALTER TABLE sites ADD COLUMN points TEXT DEFAULT '0'")
+    except sqlite3.OperationalError:
+        pass
         
     conn.commit()
     conn.close()
@@ -72,6 +76,38 @@ def send_notification(title, content):
             server.quit()
         except Exception as e:
             print(f"邮件发送失败: {e}")
+
+def get_newapi_balance(checkin_url, cookie_str, uid):
+    """自动提取域名并获取 New-API 账号余额，携带 UID 以通过验证"""
+    try:
+        from urllib.parse import urlparse
+        parsed = urlparse(checkin_url)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        self_url = f"{base_url}/api/user/self"
+        
+        if not cookie_str.startswith('session='): 
+            cookie_str = 'session=' + cookie_str
+        cookies = {'session': cookie_str.replace('session=', '')}
+        
+        # 加入了关键的 new-api-user 身份头
+        headers = {
+            'accept': 'application/json, text/plain, */*',
+            'new-api-user': str(uid),
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'referer': f"{base_url}/"
+        }
+        
+        res = requests.get(self_url, headers=headers, cookies=cookies, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            if data.get('success'):
+                # New-API 里的额度一般是 quota，500000 = $1
+                quota = data.get('data', {}).get('quota', 0)
+                balance = quota / 500000.0
+                return f"${balance:.2f}"
+        return "?"
+    except Exception:
+        return "异常"
 
 def execute_checkin(site_id=None, manual=False):
     conn = sqlite3.connect(DB_PATH)
@@ -120,13 +156,16 @@ def execute_checkin(site_id=None, manual=False):
         except Exception as e:
             status_text = "请求异常"
             
-        c.execute("UPDATE sites SET last_status=?, last_time=? WHERE id=?", (status_text, now_time, sid))
+        if not is_success:
+            failed_sites.append(name)
+            
+        # 签到完顺便查一下最新余额，此时传入 uid
+        current_points = get_newapi_balance(url, cookie_str, uid)
+            
+        c.execute("UPDATE sites SET last_status=?, last_time=?, points=? WHERE id=?", (status_text, now_time, current_points, sid))
         
         log_status = "签到成功" if is_success else status_text
         c.execute("INSERT INTO logs (site_id, check_date, status) VALUES (?, ?, ?)", (sid, today, log_status))
-        
-        if not is_success:
-            failed_sites.append(name)
             
     conn.commit()
     conn.close()
@@ -169,11 +208,11 @@ def index(): return render_template('index.html', s=get_all_settings())
 def get_sites():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # 按照 sort_order 和 id 排序返回
-    sites = c.execute("SELECT id, name, url, user_id, session_cookie, cron_time, last_status, last_time FROM sites ORDER BY sort_order ASC, id ASC").fetchall()
+    # 增加返回 points 字段
+    sites = c.execute("SELECT id, name, url, user_id, session_cookie, cron_time, last_status, last_time, points FROM sites ORDER BY sort_order ASC, id ASC").fetchall()
     conn.close()
     return jsonify([{"id": s[0], "name": s[1], "url": s[2], "user_id": s[3], "session_cookie": s[4],
-                     "cron_time": s[5], "last_status": s[6], "last_time": s[7]} for s in sites])
+                     "cron_time": s[5], "last_status": s[6], "last_time": s[7], "points": s[8]} for s in sites])
 
 @app.route('/api/logs/<int:site_id>/<month>', methods=['GET'])
 def get_logs(site_id, month):
@@ -186,12 +225,12 @@ def get_logs(site_id, month):
 @app.route('/api/add', methods=['POST'])
 def add_site():
     data = request.json
+    points = get_newapi_balance(data['url'], data['session_cookie'], data['user_id'])
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    # 新增的卡片默认排在最下面
     sort_order = int(time.time())
-    c.execute("INSERT INTO sites (name, url, user_id, session_cookie, cron_time, last_status, last_time, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-              (data['name'], data['url'], data['user_id'], data['session_cookie'], data.get('cron_time', '08:00'), '等待执行', '-', sort_order))
+    c.execute("INSERT INTO sites (name, url, user_id, session_cookie, cron_time, last_status, last_time, sort_order, points) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+              (data['name'], data['url'], data['user_id'], data['session_cookie'], data.get('cron_time', '08:00'), '等待执行', '-', sort_order, points))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
@@ -199,17 +238,17 @@ def add_site():
 @app.route('/api/edit/<int:site_id>', methods=['POST'])
 def edit_site(site_id):
     data = request.json
+    points = get_newapi_balance(data['url'], data['session_cookie'], data['user_id'])
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("UPDATE sites SET name=?, url=?, user_id=?, session_cookie=?, cron_time=?, last_status='信息已修改,等待执行' WHERE id=?", 
-              (data['name'], data['url'], data['user_id'], data['session_cookie'], data['cron_time'], site_id))
+    c.execute("UPDATE sites SET name=?, url=?, user_id=?, session_cookie=?, cron_time=?, last_status='信息已修改,等待执行', points=? WHERE id=?", 
+              (data['name'], data['url'], data['user_id'], data['session_cookie'], data['cron_time'], points, site_id))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
 
 @app.route('/api/reorder', methods=['POST'])
 def reorder_sites():
-    # 接收包含 id 和 sort_order 的数组进行批量更新
     data = request.json
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
