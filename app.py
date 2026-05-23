@@ -4,6 +4,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import smtplib
 from email.mime.text import MIMEText
 import urllib.parse
+import time
 
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'potato_secret_2026')
@@ -27,6 +28,13 @@ def init_db():
                   site_id INTEGER, check_date TEXT, status TEXT)''')
     c.execute('''CREATE TABLE IF NOT EXISTS settings
                  (key TEXT PRIMARY KEY, value TEXT)''')
+    
+    # 数据库热更新：自动增加排序字段，防止旧数据库报错
+    try:
+        c.execute("ALTER TABLE sites ADD COLUMN sort_order INTEGER DEFAULT 0")
+    except sqlite3.OperationalError:
+        pass # 列已存在则忽略
+        
     conn.commit()
     conn.close()
 
@@ -69,16 +77,18 @@ def execute_checkin(site_id=None, manual=False):
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
     if site_id:
-        sites = c.execute("SELECT * FROM sites WHERE id=?", (site_id,)).fetchall()
+        sites = c.execute("SELECT id, name, url, user_id, session_cookie, cron_time FROM sites WHERE id=?", (site_id,)).fetchall()
     else:
         current_time = datetime.datetime.now().strftime('%H:%M')
-        sites = c.execute("SELECT * FROM sites WHERE cron_time=?", (current_time,)).fetchall()
+        sites = c.execute("SELECT id, name, url, user_id, session_cookie, cron_time FROM sites WHERE cron_time=?", (current_time,)).fetchall()
     
     today = datetime.datetime.now().strftime('%Y-%m-%d')
     now_time = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
 
+    failed_sites = []
+
     for site in sites:
-        sid, name, url, uid, cookie_str, cron_time, _, _ = site
+        sid, name, url, uid, cookie_str, cron_time = site
         headers = {
             'accept': 'application/json, text/plain, */*',
             'new-api-user': str(uid),
@@ -94,17 +104,15 @@ def execute_checkin(site_id=None, manual=False):
                 try:
                     res_json = res.json()
                     message = res_json.get('message', '')
-                    # 判断真实的业务逻辑状态
                     if res_json.get('success') == True:
                         status_text = "签到成功"
                         is_success = True
                     elif "已签到" in message:
                         status_text = "今日已签到"
-                        is_success = True # 已签到也算成功，不触发失败通知
+                        is_success = True 
                     else:
                         status_text = f"失败: {message}"
                 except:
-                    # 如果返回的不是JSON，但状态码是200，保守当做成功
                     status_text = "签到成功"
                     is_success = True
             else:
@@ -113,15 +121,20 @@ def execute_checkin(site_id=None, manual=False):
             status_text = "请求异常"
             
         c.execute("UPDATE sites SET last_status=?, last_time=? WHERE id=?", (status_text, now_time, sid))
-        # 记录日历日志时，统一处理“今日已签到”和“签到成功”都显示为绿色的成功色块
+        
         log_status = "签到成功" if is_success else status_text
         c.execute("INSERT INTO logs (site_id, check_date, status) VALUES (?, ?, ?)", (sid, today, log_status))
         
         if not is_success:
-            send_notification(f"⚠️ 签到失败: {name}", f"站点【{name}】于 {now_time} 签到失败。\n状态: {status_text}\n请登录面板检查 Session 是否过期。")
+            failed_sites.append(name)
             
     conn.commit()
     conn.close()
+
+    if failed_sites:
+        failed_names = "，".join(failed_sites)
+        settings = get_all_settings()
+        send_notification(f"⚠️ {settings.get('site_title')} 签到失败", f"站点【{failed_names}】于 {now_time} 签到失败。\n请登录面板更新信息。")
 
 scheduler = BackgroundScheduler(timezone="Asia/Shanghai")
 scheduler.add_job(func=execute_checkin, trigger="interval", minutes=1)
@@ -156,9 +169,10 @@ def index(): return render_template('index.html', s=get_all_settings())
 def get_sites():
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    sites = c.execute("SELECT * FROM sites").fetchall()
+    # 按照 sort_order 和 id 排序返回
+    sites = c.execute("SELECT id, name, url, user_id, session_cookie, cron_time, last_status, last_time FROM sites ORDER BY sort_order ASC, id ASC").fetchall()
     conn.close()
-    return jsonify([{"id": s[0], "name": s[1], "url": s[2], "user_id": s[3], 
+    return jsonify([{"id": s[0], "name": s[1], "url": s[2], "user_id": s[3], "session_cookie": s[4],
                      "cron_time": s[5], "last_status": s[6], "last_time": s[7]} for s in sites])
 
 @app.route('/api/logs/<int:site_id>/<month>', methods=['GET'])
@@ -174,8 +188,33 @@ def add_site():
     data = request.json
     conn = sqlite3.connect(DB_PATH)
     c = conn.cursor()
-    c.execute("INSERT INTO sites (name, url, user_id, session_cookie, cron_time, last_status, last_time) VALUES (?, ?, ?, ?, ?, ?, ?)",
-              (data['name'], data['url'], data['user_id'], data['session_cookie'], data.get('cron_time', '08:00'), '等待执行', '-'))
+    # 新增的卡片默认排在最下面
+    sort_order = int(time.time())
+    c.execute("INSERT INTO sites (name, url, user_id, session_cookie, cron_time, last_status, last_time, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+              (data['name'], data['url'], data['user_id'], data['session_cookie'], data.get('cron_time', '08:00'), '等待执行', '-', sort_order))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/edit/<int:site_id>', methods=['POST'])
+def edit_site(site_id):
+    data = request.json
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("UPDATE sites SET name=?, url=?, user_id=?, session_cookie=?, cron_time=?, last_status='信息已修改,等待执行' WHERE id=?", 
+              (data['name'], data['url'], data['user_id'], data['session_cookie'], data['cron_time'], site_id))
+    conn.commit()
+    conn.close()
+    return jsonify({"success": True})
+
+@app.route('/api/reorder', methods=['POST'])
+def reorder_sites():
+    # 接收包含 id 和 sort_order 的数组进行批量更新
+    data = request.json
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    for item in data:
+        c.execute("UPDATE sites SET sort_order=? WHERE id=?", (item['sort_order'], item['id']))
     conn.commit()
     conn.close()
     return jsonify({"success": True})
