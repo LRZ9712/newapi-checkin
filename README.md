@@ -17,7 +17,8 @@
 
 ## 📸 界面预览
 
-> *主界面*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/ca56727c-0fb7-4bab-87b5-2bb060281fef" />
+> *主界面*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/b7a2595e-e0e0-4e0e-bbc7-991b81bc60b3" />
+
 
 > *签到日历*<img width="1920" height="919" alt="image" src="https://github.com/user-attachments/assets/13b41d42-0a68-46f1-ad5c-0308f6bfaf27" />
 
